@@ -1,0 +1,88 @@
+-- _____________________________Exploratory Data Analysis Project_______________________________________________________
+
+-- Just checking the maximum number of people laid off
+SELECT MAX(total_laid_off)
+FROM layoffs_staging2;
+
+-- Just checking the maximum percentage of people laid off
+SELECT MAX(percentage_laid_off)
+FROM layoffs_staging2;
+
+-- Looking at all the companies that laid off their entire company
+SELECT *
+FROM layoffs_staging2
+WHERE percentage_laid_off = 1;
+
+-- Looking at the comapnies that laid off the most employees to the least
+SELECT company, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY company
+ORDER BY 2 DESC;
+
+-- Looking at when layoffs started to when the dataset stops documenting the layoffs
+SELECT MIN(`date`), MAX(`date`)
+FROM layoffs_staging2;
+-- Looks like layoffs stared right when the pandemic started
+
+-- Looking at a list of industries that laid off people in descending order
+SELECT industry, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY industry
+ORDER BY 2 DESC;
+-- It looks like consumer, retail, and 'other' industries laid off the most people during the pandemic
+-- The industries that laid off the least amount of people were manufacturing, fin-tech, and aerospace
+
+-- Looking at a list of countries that laid off people in decending order
+SELECT country, SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY country
+ORDER BY 2 DESC;
+-- It looks like the United States, India, and the Netherlands laid off the most employees. The United States laid of 7.12 times more employees than India, the second country to lay off the most employees
+
+-- Looking at the total number of layoffs per year from 2023 to 2020 in descending order
+SELECT YEAR(`date`), SUM(total_laid_off)
+FROM layoffs_staging2
+GROUP BY YEAR(`date`)
+ORDER BY 1 DESC;
+-- It looks like 2022 laid off the most people with approximately 160,661 people
+
+
+-- Creating a CTE that shows the monthly rolling total for the total layoffs 
+WITH Rolling_Total AS
+(
+SELECT SUBSTRING(`date`, 1, 7) AS `MONTH`, SUM(total_laid_off) AS total_num
+FROM layoffs_staging2
+WHERE SUBSTRING(`date`, 1, 7) IS NOT NULL
+GROUP BY `MONTH`
+ORDER BY 1 ASC
+)
+SELECT `MONTH`, total_num, SUM(total_num) OVER(ORDER BY `MONTH`) AS rolling_total
+FROM Rolling_Total;
+
+-- Creating a query that shows the total number of employees laid off grouped by year and company
+SELECT company, YEAR(`date`), SUM(total_laid_off)
+FROM layoffs_staging2
+WHERE `date` IS NOT NULL
+AND total_laid_off IS NOT NULL
+GROUP BY company, YEAR(`date`)
+ORDER BY 3 DESC;
+
+-- Looking at the top 5 companies that laid off the most employees in each year 
+WITH Company_Year (company, years, total_laid_off) AS
+(
+SELECT company, YEAR(`date`), SUM(total_laid_off)
+FROM layoffs_staging2
+WHERE `date` IS NOT NULL
+AND total_laid_off iS NOT NULL
+GROUP BY company, YEAR(`date`)
+), Company_Year_Rank AS
+(
+SELECT *, DENSE_RANK() OVER (PARTITION BY years ORDER BY total_laid_off DESC) AS Ranking
+FROM Company_Year
+)
+SELECT *
+FROM Company_Year_Rank
+WHERE Ranking <= 5
+
+
+
