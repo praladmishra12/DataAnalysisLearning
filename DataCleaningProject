@@ -1,0 +1,171 @@
+-- _____________________________Data Cleaning Project_______________________________________________________
+
+-- Creating a staging data table to work on
+DROP TABLE IF EXISTS layoffs_staging;
+CREATE TABLE layoffs_staging 
+LIKE layoffs;
+
+-- Insert all values into 
+INSERT layoffs_staging 
+SELECT * 
+FROM layoffs;
+
+-- ______________________________________Step 1: Remove Duplicates________________________________________________________
+
+-- Assign row number by paritioning over every column
+SELECT *,
+ROW_NUMBER() OVER(
+PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country, funds_raised_millions) AS row_num
+FROM layoffs_staging;
+
+-- Create a CTE for the duplicate table
+WITH duplicate_cte AS
+(
+SELECT *,
+ROW_NUMBER() OVER(
+PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country, funds_raised_millions) AS row_num
+FROM layoffs_staging
+)
+SELECT * 
+FROM duplicate_cte
+WHERE row_num > 1;
+
+-- Check one of the companies to see if the query above returned correctly
+SELECT *
+FROM layoffs_staging
+WHERE company = "Casper";
+
+-- Create a second staging table to house the duplicate values
+DROP TABLE IF EXISTS layoffs_staging2; 
+CREATE TABLE `layoffs_staging2` (
+  `company` text,
+  `location` text,
+  `industry` text,
+  `total_laid_off` int DEFAULT NULL,
+  `percentage_laid_off` text,
+  `date` text,
+  `stage` text,
+  `country` text,
+  `funds_raised_millions` int DEFAULT NULL,
+  `row_num` INT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Insert the duplicates into the new table
+INSERT INTO layoffs_staging2
+SELECT *,
+ROW_NUMBER() OVER(
+PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country, funds_raised_millions) AS row_num
+FROM layoffs_staging;
+
+-- Delete the duplicates from layoffs_staging2 table
+DELETE
+FROM layoffs_staging2
+WHERE row_num > 1;
+
+-- Double check the duplicates
+select * from layoffs_staging2
+WHERE row_num > 1;
+
+-- ______________________________________Step 2: Standardize The Data___________________________________________________________
+
+-- Trim the company name to get rid of leading and trailing spaces
+UPDATE layoffs_staging2
+SET company = TRIM(company);
+
+-- Check changes
+SELECT DISTINCT company from layoffs_staging2;
+
+-- Check the Industry column for inconsistencies
+SELECT DISTINCT industry from layoffs_staging2 ORDER BY 1;
+-- Some of the Crypto industry rows have different names (ex. CryptoCurrency)
+
+-- Update all rows that contain "Crypto" to only "Crypto"
+UPDATE layoffs_staging2
+SET industry = 'Crypto'
+WHERE industry LIKE 'Crypto%';
+
+-- Check changes
+SELECT DISTINCT industry 
+FROM layoffs_staging2;
+
+-- Check location column
+SELECT DISTINCT country 
+FROM layoffs_staging2;
+
+-- Fix the trailing '.' that appears after 'United States'
+UPDATE layoffs_staging2
+SET country = TRIM(TRAILING '.' FROM country)
+WHERE country LIKE 'United States%';
+
+-- Convert Date column into date data type
+UPDATE layoffs_staging2
+SET `date` = STR_TO_DATE(`date`, '%m/%d/%Y');
+
+ALTER TABLE layoffs_staging2
+MODIFY COLUMN `date` DATE;
+
+-- ______________________________________Step 3: Working with Null and Blank Values_____________________________________________
+
+-- Checking company column
+SELECT * 
+FROM layoffs_staging2
+WHERE industry IS NULL
+OR industry = '';
+
+-- Check if some rows for the company 'Airbnb' have non null values for the 'industry' column so we can replace the null values with data
+SELECT *
+FROM layoffs_staging2
+WHERE company = 'Airbnb';
+
+
+-- Update all empty values in the 'industry' column to NULL
+UPDATE layoffs_staging2
+SET industry = null
+WHERE industry = '';
+
+
+-- Query to check if the logic for finding companies that are the same but have different values for the 'industry' column
+SELECT * 
+FROM layoffs_staging2 st1
+JOIN layoffs_staging2 st2
+	ON st1.company = st2.company
+    AND st1.location = st2.location
+WHERE st1.industry IS NULL 
+AND st2.industry IS NOT NULL;
+
+-- Update the null values in the 'industry' column with the correct value
+UPDATE layoffs_staging2 st1
+JOIN layoffs_staging2 st2
+	ON st1.company = st2.company
+    AND st1.location = st2.location
+SET st1.industry = st2.industry
+WHERE (st1.industry IS NULL OR st1.industry = '')
+AND st2.industry IS NOT NULL; 
+
+-- Check for Airbnb to see if the null values in the 'industry' columns are populated
+SELECT * from layoffs_staging2
+WHERE company = 'Airbnb';
+
+
+-- ___________________________Step 4: Remove Columns or Rows________________________________________________
+-- Deleting two columns essential for analysis. These rows won't provide us with any useful information
+DELETE 
+FROM layoffs_staging2
+WHERE total_laid_off IS NULL
+AND percentage_laid_off IS NULL;
+
+-- Get rid of row_num column because we no longer need it
+ALTER TABLE layoffs_staging2
+DROP COLUMN row_num;
+
+
+
+
+
+
+
+
+
+
+
+
